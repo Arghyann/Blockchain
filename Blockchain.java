@@ -60,23 +60,27 @@ public class Blockchain {
         /**
          * EXERCISE 2: Transaction Hashing
          * Returns SHA-256 hash of transaction data (including signature if present) as a hex string.
-         * 
-         * Why hash? This hash serves as the transaction ID (txid) and is used to chain inputs/outputs 
+         *
+         * Why hash? This hash serves as the transaction ID (txid) and is used to chain inputs/outputs
          * and verify data integrity.
          */
         public String calculateHash() {
-            // TODO: Implement Transaction Hashing
-            //
-            // 1. Get the message bytes for the core transaction data using getSigningData().
-            //    Convert it to string using: new String(getSigningData(), StandardCharsets.UTF_8)
-            // 2. If the signature is not null, append its parts: ";" + signature.r.toString(16) + "," + signature.s.toString(16)
-            // 3. Compute the SHA-256 digest of this combined string (in UTF-8 bytes).
-            //    Hint: MessageDigest.getInstance("SHA-256").digest(inputBytes)
-            // 4. Return the hash as a hexadecimal string (padded with leading zeros if necessary).
-            
-            return ""; // Placeholder
-        }
+            try {
+                String data = new String(getSigningData(), StandardCharsets.UTF_8);
 
+                if (signature != null) {
+                    data += ";" + signature.r.toString(16)
+                            + "," + signature.s.toString(16);
+                }
+
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] hash = digest.digest(data.getBytes(StandardCharsets.UTF_8));
+
+                return String.format("%064x", new BigInteger(1, hash));
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
+            }
+        }
         @Override
         public String toString() {
             String sender = (senderPubkey == null) ? "Coinbase" : senderPubkey.toString().substring(0, 25) + "...";
@@ -109,18 +113,25 @@ public class Blockchain {
          * timestamp, nonce, and the hash of each transaction, and hash the resulting string.
          */
         public String calculateHash() {
-            // TODO: Implement Block Header Hashing
-            //
-            // 1. Initialize a StringBuilder.
-            // 2. Append:
-            //    - previousHash
-            //    - Long.toString(timestamp)
-            //    - Long.toString(nonce)
-            // 3. Loop through 'transactions' list and append the calculateHash() of each transaction.
-            // 4. Compute the SHA-256 digest of this combined string's UTF-8 bytes.
-            // 5. Return the digest as a hexadecimal string.
-            
-            return ""; // Placeholder
+            try {
+                StringBuilder sb = new StringBuilder();
+
+                sb.append(previousHash);
+                sb.append(timestamp);
+                sb.append(nonce);
+
+                for (Transaction tx : transactions) {
+                    sb.append(tx.calculateHash());
+                }
+
+                MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                byte[] hash = digest.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
+
+                return String.format("%064x", new BigInteger(1, hash));
+
+            } catch (NoSuchAlgorithmException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         /**
@@ -131,14 +142,12 @@ public class Blockchain {
          * The difficulty specifies how many leading hexadecimal zeros the hash must have.
          */
         public void mineBlock(int difficulty) {
-            // TODO: Implement the Mining Loop
-            //
-            // 1. Create a target string containing 'difficulty' number of zeros.
-            //    Hint: "0".repeat(difficulty)
-            // 2. Compute the initial block hash using calculateHash() and store it in this.hash.
-            // 3. Run a loop: while the block hash does not start with the target string:
-            //    - Increment this.nonce.
-            //    - Recalculate this.hash using calculateHash().
+            String target = "0".repeat(difficulty);
+            hash = calculateHash();
+            while(!hash.startsWith(target)){
+                nonce++;
+                hash=calculateHash();
+            }
         }
     }
 
@@ -172,19 +181,25 @@ public class Blockchain {
      * and credits, and subtracting pending transactions to prevent double spending.
      */
     public double getBalance(ECC.Point address) {
-        // TODO: Implement Balance Calculation
-        //
-        // 1. Initialize balance = 0.0.
-        // 2. Loop through all blocks in 'chain':
-        //    - Loop through all transactions in each block:
-        //      - If address.equals(tx.receiverPubkey), add tx.amount to balance.
-        //      - If address.equals(tx.senderPubkey), subtract tx.amount from balance.
-        // 3. Loop through all transactions in 'pendingTransactions' (the pool):
-        //      - If address.equals(tx.senderPubkey), subtract tx.amount from balance.
-        //        (This prevents a user from double-spending their pending unconfirmed coins!)
-        // 4. Return balance.
-        
-        return 0.0; // Placeholder
+        double balance = 0;
+        for(Block b : chain){
+            for(Transaction t: b.transactions){
+                if (address.equals(t.receiverPubkey)) {
+                    balance += t.amount;
+                }
+
+                if (address.equals(t.senderPubkey)) {
+                    balance -= t.amount;
+                }
+            }
+        }
+        for (Transaction tx : pendingTransactions) {
+            if (address.equals(tx.senderPubkey)) {
+                balance -= tx.amount;
+            }
+        }
+
+        return balance;
     }
 
     /**
@@ -231,29 +246,72 @@ public class Blockchain {
      * Validates the integrity of the blockchain end-to-end.
      */
     public boolean verifyChain() {
-        // TODO: Implement Blockchain Integrity Verification
-        //
-        // Part A: Linkage, Hashing, and PoW validation
-        // 1. Loop through the chain starting from index 1 (skip the genesis block for linkage):
-        //    - Let 'current' be the block at index i, and 'previous' be the block at index i-1.
-        //    - Verify current.hash matches current.calculateHash(). If not, print error and return false.
-        //    - Verify current.previousHash matches previous.hash. If not, print error and return false.
-        //    - Verify current.hash starts with difficulty number of zeros: "0".repeat(difficulty)
-        //      If not, print error and return false.
-        //
-        // Part B: Transaction Validity and Balance Integrity (Prevent Double-Spends)
-        // 2. Initialize a Map<ECC.Point, Double> balances = new HashMap<>();
-        // 3. Loop through all blocks in 'chain' (from index 0 to size-1):
-        //    - Loop through all transactions inside the block:
-        //      - Verify the transaction signature by calling tx.verify(). If false, print error and return false.
-        //      - Update balances:
-        //        - If tx.senderPubkey is not null:
-        //          - Get sender balance (default 0.0). If balance < tx.amount, print error (double-spend) and return false.
-        //          - Subtract amount from sender.
-        //        - Get receiver balance (default 0.0). Add amount to receiver.
-        //
-        // 4. Return true if all checks succeed!
 
-        return false; // Placeholder
-    }
-}
+        // Part A: Verify hashes, links, and Proof of Work
+        for (int i = 1; i < chain.size(); i++) {
+            Block current = chain.get(i);
+            Block previous = chain.get(i - 1);
+
+            // Verify stored hash matches calculated hash
+            if (!current.hash.equals(current.calculateHash())) {
+                System.out.println("Invalid block hash.");
+                return false;
+            }
+
+            // Verify chain linkage
+            if (!current.previousHash.equals(previous.hash)) {
+                System.out.println("Broken chain linkage.");
+                return false;
+            }
+
+            // Verify Proof of Work
+            if (!current.hash.startsWith("0".repeat(difficulty))) {
+                System.out.println("Invalid Proof of Work.");
+                return false;
+            }
+        }
+
+        // Part B: Verify transactions and balances
+        Map<ECC.Point, Double> balances = new HashMap<>();
+
+        for (Block block : chain) {
+            for (Transaction tx : block.transactions) {
+
+                // Verify transaction signature
+                if (!tx.verify()) {
+                    System.out.println("Invalid transaction signature.");
+                    return false;
+                }
+
+                // Coinbase transactions have no sender
+                if (tx.senderPubkey != null) {
+
+                    double senderBalance =
+                            balances.getOrDefault(tx.senderPubkey, 0.0);
+
+                    // Prevent overdrafts / double spending
+                    if (senderBalance < tx.amount) {
+                        System.out.println("Double-spend or insufficient balance detected.");
+                        return false;
+                    }
+
+                    // Subtract from sender
+                    balances.put(
+                            tx.senderPubkey,
+                            senderBalance - tx.amount
+                    );
+                }
+
+                // Add to receiver
+                double receiverBalance =
+                        balances.getOrDefault(tx.receiverPubkey, 0.0);
+
+                balances.put(
+                        tx.receiverPubkey,
+                        receiverBalance + tx.amount
+                );
+            }
+        }
+
+        return true;
+    }}

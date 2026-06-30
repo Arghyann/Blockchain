@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  node-alice:
+    build: .
+    network_mode: "host"
+    command: ["Alice", "5001", "8081", "5002", "5003"]
+    restart: always
+
+  node-aryan:
+    build: .
+    network_mode: "host"
+    command: ["Aryan", "5002", "8082", "5001", "5003"]
+    restart: always
+
+  node-bob:
+    build: .
+    network_mode: "host"
+    command: ["Bob", "5003", "8083", "5001", "5002"]
+    restart: always
