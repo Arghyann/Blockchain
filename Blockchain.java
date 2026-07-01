@@ -206,6 +206,10 @@ public class Blockchain {
      * Validates signature and balance, then adds transaction to the pending pool.
      */
     public void addTransaction(Transaction tx) {
+        if (tx.senderPubkey == null) {
+            throw new IllegalArgumentException("Coinbase transactions are not allowed in the pending transaction pool.");
+        }
+
         if (!tx.verify()) {
             throw new IllegalArgumentException("Transaction signature verification failed.");
         }
@@ -260,7 +264,10 @@ public class Blockchain {
 
             // Verify chain linkage
             if (!current.previousHash.equals(previous.hash)) {
-                System.out.println("Broken chain linkage.");
+                System.out.println("Broken chain linkage at block " + i + "!");
+                System.out.println("  Current Block Hash: " + current.hash);
+                System.out.println("  Current PreviousHash field: " + current.previousHash);
+                System.out.println("  Previous Block Hash field: " + previous.hash);
                 return false;
             }
 
@@ -281,6 +288,14 @@ public class Blockchain {
                 if (!tx.verify()) {
                     System.out.println("Invalid transaction signature.");
                     return false;
+                }
+
+                // Validate coinbase reward amount (prevent inflation)
+                if (tx.senderPubkey == null) {
+                    if (tx.amount != COINBASE_REWARD) {
+                        System.out.println("Verification Error: Invalid coinbase reward amount: " + tx.amount);
+                        return false;
+                    }
                 }
 
                 // Coinbase transactions have no sender
